@@ -1,0 +1,15 @@
+{
+    "name": "mcp-x-agents-sdk",
+    "version": "0.0.1",
+    "type": "commonjs",
+    "scripts": {
+        "start": "tsx mcp-server.ts"
+    },
+    "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.6.1",
+        "express": "^5.0.1"
+    },
+    "devDependencies": {
+        "tsx": "^4.19.1"
+    }
+}

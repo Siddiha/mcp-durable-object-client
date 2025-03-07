@@ -2,15 +2,15 @@
 
 This example shows a working pattern using durable objects as an MCP client.
 
-To start, install depdencies in `/` and `/external-mcp-server`
+To start, install depdencies in `/` and `/server`
 
 ```
 npm i
 ```
+To start the server, run `npm run start` in `server/`
 
-To start the client, run `npm run start`
+To start the client, run `npm run start` in `/`
 
-To start the server, run `npx tsx external-mcp-server/mcp.ts`
 
 Ask `Can you add 5 and 6`?
 

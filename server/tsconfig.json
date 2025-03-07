@@ -1,0 +1,10 @@
+{
+    "compilerOptions": {
+        "esModuleInterop": true,
+        "target": "ES2020",
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext"
+    },
+    "include": ["./**/*.ts"],
+    "files": ["mcp-server.ts"]
+}
