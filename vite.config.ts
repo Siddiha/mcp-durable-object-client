@@ -9,6 +9,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      'pkce-challenge': 'pkce-challenge/dist/index.browser.js'
     },
-  },
+  }
 });
