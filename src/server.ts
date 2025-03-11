@@ -4,7 +4,8 @@ import {
   type Schedule,
 } from "agents-sdk";
 import { AIChatAgent } from "agents-sdk/ai-chat-agent";
-import { jsonSchemaToZod, type JsonSchemaObject } from '@n8n/json-schema-to-zod';
+import { routePartykitRequest } from "partyserver";
+  import { jsonSchemaToZod, type JsonSchemaObject } from '@n8n/json-schema-to-zod';
 import {
   createDataStreamResponse,
   generateId,
@@ -17,6 +18,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { processToolCalls } from "./utils";
 import { tools, executions } from "./tools";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { McpObject } from "./mcp-server-do";
 
 // Override with a compatible version for Cloudflare Workers
 const originalFetch = global.fetch;
@@ -27,7 +29,7 @@ global.fetch = (url, options = {}) => {
   // @ts-ignore
   // biome-ignore lint/performance/noDelete: <explanation>
   delete workerOptions.mode;
-  
+
   // Call the original fetch with fixed options
   return originalFetch(url, workerOptions);
 };
@@ -35,11 +37,13 @@ global.fetch = (url, options = {}) => {
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { z, type ZodRawShape } from "zod";
+import { Hono } from "hono";
 
 // Environment variables type definition
 export type Env = {
   OPENAI_API_KEY: string;
   Chat: AgentNamespace<Chat>;
+  McpObject: DurableObjectNamespace<McpObject>;
 };
 
 // We use ALS to expose the agent context to the tools
@@ -53,17 +57,17 @@ export class Chat extends AIChatAgent<Env> {
    * MCP client instance
    */
   private mcpClient: Client | null = null;
-  
+
   /**
    * MCP transport instance
    */
   private mcpTransport: SSEClientTransport | null = null;
-  
+
   /**
    * Flag to track if we've attempted connection
    */
   private mcpConnectionAttempted = false;
-  
+
   /**
    * Available tools from the MCP server
    */
@@ -77,37 +81,37 @@ export class Chat extends AIChatAgent<Env> {
     if (this.mcpConnectionAttempted) {
       return this.mcpClient !== null;
     }
-    
+
     this.mcpConnectionAttempted = true;
-    
+
     try {
       console.log("Connecting to MCP server...");
-      
+
       // Initialize the transport with proper URL
       this.mcpTransport = new SSEClientTransport(new URL("http://localhost:8008/sse"));
-      
+
       // Initialize the client
       this.mcpClient = new Client(
         {
           name: "cloudflare-durable-object-client",
           version: "1.0.0"
-        }, 
+        },
         {}
       );
-      
+
       // Connect to the server
       await this.mcpClient.connect(this.mcpTransport);
-      
+
       // Get server capabilities
       const capabilities = await this.mcpClient.getServerCapabilities();
       console.log("MCP Server capabilities:", capabilities);
-      
+
       // Fetch available tools
       const toolsResponse = await this.mcpClient.listTools();
       // @ts-ignore one life
       this.mcpTools = toolsResponse.tools || {} as ToolSet;
       console.log(`Found ${this.mcpTools.length} tools:`, this.mcpTools);
-      
+
       return true;
     } catch (error) {
       console.error("Failed to connect to MCP server:", error);
@@ -119,11 +123,12 @@ export class Chat extends AIChatAgent<Env> {
 
   // biome-ignore lint/complexity/noBannedTypes: <explanation>
   async onChatMessage(onFinish: StreamTextOnFinishCallback<{}>) {
+
     // Create a streaming response that handles both text and tool outputs
     return agentContext.run(this, async () => {
       // Connect to MCP server if not already connected
       const mcpConnected = await this.connectToMcpServer();
-      
+
       if (mcpConnected) {
         console.log("Successfully connected to MCP server");
       } else {
@@ -172,7 +177,7 @@ export class Chat extends AIChatAgent<Env> {
           const openai = createOpenAI({
             apiKey: this.env.OPENAI_API_KEY,
           });
-          
+
 
           try {
             // Stream the AI response using GPT-4
@@ -213,7 +218,7 @@ export class Chat extends AIChatAgent<Env> {
       },
     ]);
   }
-  
+
   /**
    * Clean up resources when the Durable Object is about to be destroyed
    */
@@ -232,6 +237,7 @@ export class Chat extends AIChatAgent<Env> {
   }
 }
 
+
 /**
  * Worker entry point that routes incoming requests to the appropriate handler
  */
@@ -243,15 +249,26 @@ export default {
       );
       return new Response("OPENAI_API_KEY is not set", { status: 500 });
     }
-    
+    const url = new URL(request.url)
+
+    if (new URL(request.url).pathname.startsWith("/server/")) {
+      console.log("Request to MCP server")
+      const sessionId = url.searchParams.get('sessionId');
+      const object = env.McpObject.get(
+        sessionId ? env.McpObject.idFromString(sessionId) : env.McpObject.newUniqueId(),
+      );
+  
+      return object.fetch(request);
+    }
+
+    const id = url.searchParams.get("id");
     // Register cleanup callback for when the DO is about to be destroyed
     if (ctx && typeof ctx.waitUntil === 'function') {
       ctx.waitUntil(
         (async () => {
-          const url = new URL(request.url);
           if (url.pathname === "/__cleanup") {
             // Get the DO instance
-            const id = url.searchParams.get("id");
+
             if (id) {
               const doId = env.Chat.idFromString(id);
               const chat = env.Chat.get(doId);
@@ -263,11 +280,14 @@ export default {
         })()
       );
     }
-    
-    return (
-      // Route the request to our agent or return 404 if not found
-      (await routeAgentRequest(request, env)) ||
-      new Response("Not found", { status: 404 })
-    );
+
+
+    console.log(request.url, request.method)
+
+    const res = await routeAgentRequest(request, env);
+
+    return res || new Response("Not found", { status: 404 });
   },
 } satisfies ExportedHandler<Env>;
+
+export {McpObject}

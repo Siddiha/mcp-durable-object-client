@@ -18,14 +18,19 @@
 			{
 				"name": "Chat",
 				"class_name": "Chat"
+			},
+			{
+				"name": "McpObject",
+				"class_name": "McpObject"
 			}
 		]
 	},
 	"migrations": [
 		{
-			"tag": "v1",
+			"tag": "v4",
 			"new_sqlite_classes": [
-				"Chat"
+				"Chat",
+				"McpObject"
 			]
 		}
 	],
